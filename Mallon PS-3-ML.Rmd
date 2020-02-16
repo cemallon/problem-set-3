@@ -1,0 +1,247 @@
+---
+title: 'Problem Set 3: Trees & Machines'
+author: "Casey Mallon"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+\textbf{Decision Trees}
+
+1. Set up the data and store some things for later use:
+\begin{itemize} 
+\item Set seed
+\item Load the data
+\item Store the total number of features minus the biden feelings in object p
+\item Set $\lambda$ (shrinkage/learning rate) range from 0.0001 to 0.04, by 0.001
+\end{itemize}
+
+```{r,message=F, warning=F,echo=F}
+library(tidyverse)
+library(tidymodels)
+library(modelr)
+library(tree)
+library(randomForest)
+library(ISLR)
+library(patchwork)
+library(rcfss)
+library(gbm)
+library(gganimate)
+library(rpart)
+library(rpart.plot)
+library(ggdendro)
+library(ggplot2)
+library(caret)
+library(caTools)
+library(e1071)
+class.table = function(obs,pred){
+  mytab = table(obs,pred)
+  correct = sum(diag(mytab))/sum(mytab)
+  for (i in 1:nrow(mytab)){
+    mytab[i,]=mytab[i,]/sum(mytab[i,])
+  }
+  print(round(mytab*100,1))
+  cat("overall:",round(100*correct,1),'\n')
+}
+```
+```{r,message=F, warning=F}
+set.seed(888)
+Biden.data<- read.csv("/Users/cemallon/Documents/Machine_Learning/problem-set-3/data/nes2008.csv")
+
+p<- 5
+
+lambda<- seq(0.0001, 0.04, by=  0.001)
+
+```
+
+2. (10 points) Create a training set consisting of 75% of the observations, and a test set with all remaining obs. Note: because you will be asked to loop over multiple $\lambda$ values below, these training and test sets should only be integer values corresponding with row IDs in the data. This is a little tricky, but think about it carefully. If you try to set the training and testing sets as before, you will be unable to loop below.
+```{r,message=F, warning=F }
+train=sample(1:nrow(Biden.data), 1355.25)
+Biden_training_set<- Biden.data[train,]
+Biden_test_set<- Biden.data[-train,]
+
+```
+
+3. (15 points) Create empty objects to store training and testing MSE, and then write a loop to perform boosting on the training set with 1,000 trees for the pre-defined range of values of the shrinkage parameter, $\lambda$. Then, plot the training set and test set MSE across shrinkage values.
+```{r }
+##Training
+boosted_tree_training <- function(lambda){
+model <- gbm(biden ~ .,
+data = Biden_training_set,
+distribution="gaussian",
+n.trees=1000,
+shrinkage = lambda)
+preds <- predict(model, newdata=Biden_training_set, n.trees = 1000)
+mse <- mean((Biden_training_set$biden-preds)^2)
+mse
+}
+
+boost_training_list <- map_dbl(lambda, boosted_tree_training)
+
+boost_training_mse <- as.data.frame(cbind(lambda, boost_training_list)) %>%
+rename(mse = `boost_training_list`)
+boost_training_mse
+
+##Testing
+boosted_tree_testing <- function(lambda){
+model <- gbm(biden ~ .,
+data = Biden_test_set,
+distribution="gaussian",
+n.trees=1000,
+shrinkage = lambda)
+preds <- predict(model, newdata=Biden_test_set, n.trees = 1000)
+mse <- mean((Biden_test_set$biden-preds)^2)
+mse
+}
+
+boost_testing_list <- map_dbl(lambda, boosted_tree_testing)
+
+boost_testing_mse <- as.data.frame(cbind(lambda, boost_testing_list)) %>%
+rename(mse = `boost_testing_list`)
+boost_testing_mse
+
+##Plot 
+ggplot() + 
+geom_point(data = boost_training_mse, mapping = aes(lambda, mse), color = "hotpink") +
+geom_line(data = boost_training_mse, mapping = aes(lambda, mse), color = "hotpink") +
+geom_point(data = boost_testing_mse, mapping = aes(lambda, mse), color = "darkcyan") +
+geom_line(data = boost_testing_mse, mapping = aes(lambda, mse), color = "darkcyan") +
+labs(title = "Mean Squared Errors Across Shrinkage Values",
+y = "MSE",
+x = "Lambda",
+subtitle = "Training (Pink), Testing (Dark Cyan)")
+```
+
+4. (10 points) The test MSE values are insensitive to some precise value of $\lambda$ as long as its small enough. Update the boosting procedure by setting $\lambda$ equal to 0.01 (but still over 1000 trees). Report the test MSE and discuss the results. How do they compare?
+```{r }
+lambda2<- 0.01
+
+##Training
+boosted_tree_training2 <- function(lambda2){
+model <- gbm(biden ~ .,
+data = Biden_training_set,
+distribution="gaussian",
+n.trees=1000,
+shrinkage = lambda2)
+preds <- predict(model, newdata=Biden_training_set, n.trees = 1000)
+mse <- mean((Biden_training_set$biden-preds)^2)
+mse
+}
+
+boost_training_list2 <- map_dbl(lambda2, boosted_tree_training2)
+
+boost_training_mse2 <- as.data.frame(cbind(lambda2, boost_training_list2)) %>%
+rename(mse = `boost_training_list2`)
+boost_training_mse2
+
+##Testing
+boosted_tree_testing2 <- function(lambda2){
+model <- gbm(biden ~ .,
+data = Biden_test_set,
+distribution="gaussian",
+n.trees=1000,
+shrinkage = lambda2)
+preds <- predict(model, newdata=Biden_test_set, n.trees = 1000)
+mse <- mean((Biden_test_set$biden-preds)^2)
+mse
+}
+
+boost_testing_list2 <- map_dbl(lambda2, boosted_tree_testing2)
+
+boost_testing_mse2 <- as.data.frame(cbind(lambda2, boost_testing_list2)) %>%
+rename(mse = `boost_testing_list2`)
+boost_testing_mse2
+
+```
+The MSE for the training set is now 380.5575 and the MSE for the testing set is now 389.0379. Therefore, the training set outperforms the testing set. \newline 
+The new training set MSE fits within the range of MSE values for the original range of lambda values. The new testing set MSE also falls within the range of the MSE values for the original range of lambda values. \newline
+5. (10 points) Now apply bagging to the training set. What is the test set MSE for this approach?
+```{r,warning=F, message=F}
+
+bagging_training_set<- randomForest(biden~.,data=Biden_training_set)
+predict_bag_train<- predict(bagging_training_set,newdata=Biden_test_set) 
+mse2<- mean((predict_bag_train-Biden_test_set$biden)^2)
+mse2
+
+```
+
+6. (10 points) Now apply random forest to the training set. What is the test set MSE for this approach?
+```{r }
+
+random_forest_train <- randomForest(biden ~ ., data = Biden_training_set)
+set.seed(888)
+pred_randomforest_train <- predict(random_forest_train, newdata = Biden_test_set)
+mse3<- mean((pred_randomforest_train - Biden_test_set$biden)^2)
+mse3
+
+```
+
+7. (5 points) Now apply linear regression to the training set. What is the test set MSE for this approach?
+```{r }
+linear_model_train<- lm(biden~., data=Biden_training_set)
+set.seed(888)
+pred_lm<- predict(linear_model_train, newdata=Biden_test_set)
+mse4<- mean((pred_lm- Biden_test_set$biden)^2)
+mse4
+```
+
+8. (5 points) Compare test errors across all fits. Discuss which approach generally fits best and how you concluded this.\newline 
+Out of the three additional tests performed, the random forest approach generally fits the data best since it has the lowest MSE value. However, overall it is best to use the boosted approach, which yielded a MSE value much lower than any of the additional approaches used later in the problem set. \newline 
+
+
+\textbf{Support Vector Machines}
+
+1. Create a training set with a random sample of size 800, and a test set containing the remaining observations.
+```{r }
+dim(OJ)
+set.seed(888)
+OJ.data=data.frame(OJ)
+train<-sample(nrow(OJ.data),800)
+training_set<- OJ.data[train,]
+test_set<- OJ.data[-train,]
+```
+
+2. (10 points) Fit a support vector classifier to the training data with cost = 0.01, with Purchase as the response and all other features as predictors. Discuss the results.
+```{r }
+svmfit <- svm(Purchase ~ ., 
+             data = training_set, 
+             kernel = "linear", 
+             cost = 0.01, 
+             scale = FALSE)
+summary(svmfit)
+```
+There were 617 support vectors. 309 in one class and 307 in the other. So we are indeed predicting 2 classes. \newline
+3. (5 points) Display the confusion matrix for the classification solution, and also report both the training and test set error rates.
+```{r }
+pred_test <- predict(svmfit, newdata = test_set[,-1]) 
+confusion_matrix <- table(test_set[, 1], pred_test)
+confusion_matrix
+
+#Testing Set Error Rate
+classification_error_test <- predict(svmfit,newdata=test_set)
+class.table(obs=test_set$Purchase,pred=classification_error_test)
+
+#Training Set Error Rate
+classification_error_train <- predict(svmfit,newdata=training_set)
+class.table(obs=training_set$Purchase,pred=classification_error_train)
+
+```
+In the testing set, we're getting 74.1% correctly classified. In the training set we're correctly classifying 78%. 
+4. (10 points) Find an optimal cost in the range of 0.01 to 1000 (specific range values can vary; there is no set vector of range values you must use).
+```{r,message=F, warning=F }
+svm_tune<-tune(svm, Purchase~., data= training_set,kernel="linear",
+               ranges=list(cost=c(500, 510, 520, 530, 540, 550)))
+
+summary(svm_tune)
+```
+The optimal cost is at 500.
+5. (10 points) Compute the optimal training and test error rates using this new value for cost. Display the confusion matrix for the classification solution, and also report both the training and test set error rates. How do the error rates compare? Discuss the results in substantive terms (e.g., how well did your optimally tuned classifer perform? etc.)
+```{r }
+best.train.pred <- predict(svm_tune$best.model,newdata=training_set)
+class.table(obs=training_set$Purchase,pred=best.train.pred)
+
+best.test.pred<- predict(svm_tune$best.model,newdata=test_set)
+class.table(obs=test_set$Purchase, pred=best.test.pred)
+```
+The trianing set now correctly classifies 83.6% of the time and the testing set now correctly classifies 83.7% of the time. Both are an improvement over the previous classification rates. My optimal classifier therefore outperformed the original classifier of 0.01. 
